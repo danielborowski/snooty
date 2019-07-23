@@ -6,7 +6,6 @@ import Footer from '../components/Footer';
 import GuideBreadcrumbs from '../components/GuideBreadcrumbs';
 import GuideSection from '../components/GuideSection';
 import GuideHeading from '../components/GuideHeading';
-import Widgets from '../components/Widgets/Widgets';
 import { LANGUAGES, DEPLOYMENTS, SECTION_NAME_MAPPING } from '../constants';
 import { getLocalValue } from '../utils/browser-storage';
 import { findKeyValuePair } from '../utils/find-key-value-pair';
@@ -175,7 +174,6 @@ export default class Guide extends Component {
             <Footer />
           </div>
         </div>
-        <Widgets guideName={pageSlug} snootyStitchId={pageContext.snootyStitchId} />
       </div>
     );
   }
@@ -188,7 +186,6 @@ Guide.propTypes = {
         children: PropTypes.array,
       }).isRequired,
     }).isRequired,
-    snootyStitchId: PropTypes.string.isRequired,
     includes: PropTypes.objectOf(PropTypes.object).isRequired,
     pageMetadata: PropTypes.objectOf(PropTypes.object).isRequired,
   }).isRequired,

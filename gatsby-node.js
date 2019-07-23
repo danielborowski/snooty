@@ -1,7 +1,6 @@
 const path = require('path');
-const fs = require('fs').promises;
+const fs = require('fs');
 const mkdirp = require('mkdirp');
-const { Stitch, AnonymousCredential } = require('mongodb-stitch-server-sdk');
 const { getNestedValue } = require('./src/utils/get-nested-value');
 const { findAllKeyValuePairs } = require('./src/utils/find-all-key-value-pairs');
 const { findKeyValuePair } = require('./src/utils/find-key-value-pair');
@@ -10,10 +9,10 @@ const { findKeyValuePair } = require('./src/utils/find-key-value-pair');
 const DB = 'snooty';
 const DOCUMENTS_COLLECTION = 'documents';
 const ASSETS_COLLECTION = 'assets';
-const SNOOTY_STITCH_ID = 'ref_data-bnbxq';
 
 // test data properties
-const USE_TEST_DATA = process.env.USE_TEST_DATA;
+// const USE_TEST_DATA = process.env.USE_TEST_DATA;
+const USE_TEST_DATA = true;
 const TEST_DATA_PATH = 'tests/unit/data/site';
 const LATEST_TEST_DATA_FILE = '__testDataLatest.json';
 
@@ -24,24 +23,6 @@ const PAGE_TITLE_MAP = {};
 
 // in-memory object with key/value = filename/document
 let RESOLVED_REF_DOC_MAPPING = {};
-
-// stich client connection
-let stitchClient;
-
-const setupStitch = () => {
-  return new Promise((resolve, reject) => {
-    stitchClient = Stitch.hasAppClient(SNOOTY_STITCH_ID)
-      ? Stitch.getAppClient(SNOOTY_STITCH_ID)
-      : Stitch.initializeAppClient(SNOOTY_STITCH_ID);
-    stitchClient.auth
-      .loginWithCredential(new AnonymousCredential())
-      .then(user => {
-        console.log('logged into stitch');
-        resolve();
-      })
-      .catch(console.error);
-  });
-};
 
 // env variables for building site along with use in front-end
 // https://www.gatsbyjs.org/docs/environment-variables/#defining-environment-variables
@@ -59,41 +40,6 @@ const validateEnvVariables = () => {
   };
 };
 
-const saveAssetFile = async (name, objData) => {
-  return new Promise((resolve, reject) => {
-    // Create nested directories as specified by the asset filenames if they do not exist
-    mkdirp(path.join('static', path.dirname(name)), err => {
-      if (err) return reject(err);
-      fs.writeFile(path.join('static', name), objData.data.buffer, 'binary', err => {
-        if (err) reject(err);
-      });
-      resolve();
-    });
-  });
-};
-
-// Write all assets to static directory
-const saveAssetFiles = async assets => {
-  const promises = [];
-  const assetQuery = { _id: { $in: Object.keys(assets) } };
-  const assetDataDocuments = await stitchClient.callFunction('fetchDocuments', [DB, ASSETS_COLLECTION, assetQuery]);
-  assetDataDocuments.forEach(asset => {
-    promises.push(saveAssetFile(assets[asset._id], asset));
-  });
-  return Promise.all(promises);
-};
-
-// Parse a page's AST to find all figure nodes and return a map of image checksums and filenames
-const getImagesInPage = page => {
-  const imageNodes = findAllKeyValuePairs(page, 'name', 'figure');
-  return imageNodes.reduce((obj, node) => {
-    const name = getNestedValue(['argument', 0, 'value'], node);
-    const checksum = getNestedValue(['options', 'checksum'], node);
-    obj[checksum] = name;
-    return obj;
-  }, {});
-};
-
 exports.sourceNodes = async () => {
   // setup env variables
   const envResults = validateEnvVariables();
@@ -102,39 +48,19 @@ exports.sourceNodes = async () => {
     throw Error(envResults.message);
   }
 
-  // wait to connect to stitch
-  await setupStitch();
-
-  // if running with test data
-  if (USE_TEST_DATA) {
-    // get data from test file
-    try {
-      const fullpath = path.join(TEST_DATA_PATH, USE_TEST_DATA);
-      const fileContent = fs.readFileSync(fullpath, 'utf8');
-      RESOLVED_REF_DOC_MAPPING = JSON.parse(fileContent);
-      console.log(`*** Using test data from "${fullpath}"`);
-    } catch (e) {
-      throw Error(`ERROR with test data file: ${e}`);
-    }
-  } else {
-    // start from index document
-    const idPrefix = `${process.env.GATSBY_SITE}/${process.env.PARSER_USER}/${process.env.PARSER_BRANCH}`;
-    const query = { _id: { $regex: new RegExp(`${idPrefix}/*`) } };
-    const documents = await stitchClient.callFunction('fetchDocuments', [DB, DOCUMENTS_COLLECTION, query]);
-
-    documents.forEach(doc => {
-      const { _id, ...rest } = doc;
-      RESOLVED_REF_DOC_MAPPING[_id.replace(`${idPrefix}/`, '')] = rest;
-    });
+  // get data from test file
+  try {
+    const fullpath = path.join(TEST_DATA_PATH, LATEST_TEST_DATA_FILE);
+    const fileContent = fs.readFileSync(fullpath, 'utf8');
+    RESOLVED_REF_DOC_MAPPING = JSON.parse(fileContent);
+  } catch (e) {
+    throw Error(`ERROR with test data file: ${e}`);
   }
 
   // Identify page documents and parse each document for images
   let assets = {};
   Object.entries(RESOLVED_REF_DOC_MAPPING).forEach(([key, val]) => {
     const pageNode = getNestedValue(['ast', 'children'], val);
-    if (pageNode) {
-      assets = { ...assets, ...getImagesInPage(pageNode) };
-    }
     if (key.includes('includes/')) {
       INCLUDE_FILES[key] = val;
     } else if (!key.includes('curl') && !key.includes('https://')) {
@@ -153,17 +79,6 @@ exports.sourceNodes = async () => {
       };
     }
   });
-
-  await saveAssetFiles(assets);
-
-  // whenever we get latest data, always save latest version
-  if (!USE_TEST_DATA) {
-    const fullpathLatest = path.join(TEST_DATA_PATH, LATEST_TEST_DATA_FILE);
-    fs.writeFile(fullpathLatest, JSON.stringify(RESOLVED_REF_DOC_MAPPING), 'utf8', err => {
-      if (err) console.log(`ERROR saving test data into "${fullpathLatest}" file`, err);
-      console.log(`** Saved test data into "${fullpathLatest}"`);
-    });
-  }
 };
 
 exports.createPages = ({ actions }) => {
@@ -181,7 +96,6 @@ exports.createPages = ({ actions }) => {
           path: pageUrl,
           component: path.resolve(`./src/templates/${template}.js`),
           context: {
-            snootyStitchId: SNOOTY_STITCH_ID,
             __refDocMapping: RESOLVED_REF_DOC_MAPPING[page],
             includes: INCLUDE_FILES,
             pageMetadata: PAGE_TITLE_MAP,
@@ -191,20 +105,4 @@ exports.createPages = ({ actions }) => {
     });
     resolve();
   });
-};
-
-// Prevent errors when running gatsby build caused by browser packages run in a node environment.
-exports.onCreateWebpackConfig = ({ stage, loaders, actions }) => {
-  if (stage === 'build-html') {
-    actions.setWebpackConfig({
-      module: {
-        rules: [
-          {
-            test: /mongodb-stitch-browser-sdk/,
-            use: loaders.null(),
-          },
-        ],
-      },
-    });
-  }
 };
