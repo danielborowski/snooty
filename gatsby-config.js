@@ -8,7 +8,7 @@ require('dotenv').config({
 });
 
 const getGitBranch = () => {
-  return process.env.PARSER_BRANCH;
+  return process.env.GATSBY_CONTENT_BRANCH;
   return execSync('git rev-parse --abbrev-ref HEAD')
     .toString('utf8')
     .replace(/[\n\r\s]+$/, '');
