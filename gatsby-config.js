@@ -17,7 +17,7 @@ const getPathPrefix = () => {
   const user = userInfo().username;
   const gitBranch = getGitBranch();
 
-  return runningEnv === 'production' ? `/${process.env.GATSBY_SITE}/${user}/${gitBranch}` : '/';
+  return runningEnv === 'production' ? `/${process.env.GATSBY_SITE}/${user}/${process.env.PARSER_BRANCH}` : '/';
 };
 
 module.exports = {
