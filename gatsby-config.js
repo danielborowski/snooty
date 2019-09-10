@@ -8,6 +8,7 @@ require('dotenv').config({
 });
 
 const getGitBranch = () => {
+  return process.env.PARSER_BRANCH;
   return execSync('git rev-parse --abbrev-ref HEAD')
     .toString('utf8')
     .replace(/[\n\r\s]+$/, '');
@@ -17,7 +18,7 @@ const getPathPrefix = () => {
   const user = userInfo().username;
   const gitBranch = getGitBranch();
 
-  return runningEnv === 'production' ? `/${process.env.GATSBY_SITE}/${user}/${process.env.PARSER_BRANCH}` : '/';
+  return runningEnv === 'production' ? `/${process.env.GATSBY_SITE}/${user}/${gitBranch}` : '/';
 };
 
 module.exports = {
